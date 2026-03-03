@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>我的相册</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #book {
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+        }
+
+        .page {
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .page img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        /* 页码指示器 */
+        .page-indicator {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+        }
+
+        .page-number {
+            color: #2c3e50;
+            font-weight: 700;
+        }
+
+        /* 加载动画 */
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            z-index: 2000;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 18px;
+            margin-top: 10px;
+        }
+
+        /* 手势提示 */
+        .gesture-hint {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 25px 40px;
+            border-radius: 15px;
+            font-size: 18px;
+            text-align: center;
+            z-index: 3000;
+            animation: fadeInOut 4s ease-in-out;
+            pointer-events: none;
+        }
+
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; }
+            15%, 85% { opacity: 1; }
+        }
+
+        /* 移动端优化 */
+        @media (max-width: 768px) {
+            .page-indicator {
+                bottom: 20px;
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">正在加载相册...</div>
+    </div>
+
+    <div class="container">
+        <div id="book"></div>
+    </div>
+
+    <div class="page-indicator">
+        <span class="page-number" id="currentPage">1</span> / <span id="totalPages">6</span>
+    </div>
+
+    <!-- 翻页音效 -->
+    <audio id="pageFlipSound" preload="auto">
+        <source src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- StPageFlip 库 -->
+    <script src="https://unpkg.com/page-flip/dist/js/page-flip.browser.js"></script>
+
+    <script>
+        // 照片列表（你可以替换成自己的照片）
+        const photos = [
+            'https://picsum.photos/600/800?random=1',
+            'https://picsum.photos/600/800?random=2',
+            'https://picsum.photos/600/800?random=3',
+            'https://picsum.photos/600/800?random=4',
+            'https://picsum.photos/600/800?random=5',
+            'https://picsum.photos/600/800?random=6'
+        ];
+
+        let pageFlip = null;
+        let isFirstVisit = !localStorage.getItem('album_visited');
+
+        // 预加载图片
+        let loadedImages = 0;
+        const totalImages = photos.length;
+
+        photos.forEach((src, index) => {
+            const img = new Image();
+            img.onload = () => {
+                loadedImages++;
+                if (loadedImages === totalImages) {
+                    initBook();
+                }
+            };
+            img.src = src;
+        });
+
+        function initBook() {
+            // 创建书本容器
+            const bookElement = document.getElementById('book');
+
+            // 清空loading
+            document.getElementById('loading').style.display = 'none';
+
+            // 创建页面
+            photos.forEach((photo, index) => {
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'page';
+
+                const img = document.createElement('img');
+                img.src = photo;
+                img.alt = `照片 ${index + 1}`;
+
+                pageDiv.appendChild(img);
+                bookElement.appendChild(pageDiv);
+            });
+
+            // 计算书本尺寸
+            const width = Math.min(window.innerWidth * 0.9, 400);
+            const height = Math.min(window.innerHeight * 0.75, 600);
+
+            // 初始化 PageFlip
+            pageFlip = new St.PageFlip(bookElement, {
+                width: width,
+                height: height,
+                size: 'fixed',
+                minWidth: 315,
+                maxWidth: 1000,
+                minHeight: 420,
+                maxHeight: 1350,
+                maxShadowOpacity: 0.5,
+                showCover: false,  // 关闭封面模式，让所有页面表现一致
+                mobileScrollSupport: false,
+                swipeDistance: 30,
+                clickEventForward: true,
+                useMouseEvents: true,
+                startPage: 0,
+                drawShadow: true,
+                flippingTime: 1000,  // 翻页时间（毫秒）
+                usePortrait: true,
+                startZIndex: 0,
+                autoSize: true,
+                maxPageTextureSize: 2048,
+                showPageCorners: true,
+                disableFlipByClick: false
+            });
+
+            // 加载页面
+            pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+
+            // 更新总页数
+            document.getElementById('totalPages').textContent = photos.length;
+
+            // 翻页事件监听
+            pageFlip.on('flip', (e) => {
+                playFlipSound();
+                updatePageNumber(e.data + 1);
+            });
+
+            pageFlip.on('changeOrientation', (e) => {
+                // 处理横竖屏切换
+            });
+
+            pageFlip.on('changeState', (e) => {
+                // 状态变化
+            });
+
+            // 响应窗口大小变化
+            window.addEventListener('resize', () => {
+                const newWidth = Math.min(window.innerWidth * 0.9, 400);
+                const newHeight = Math.min(window.innerHeight * 0.75, 600);
+                pageFlip.updateState({
+                    width: newWidth,
+                    height: newHeight
+                });
+            });
+
+            // 显示手势提示（首次访问）
+            if (isFirstVisit) {
+                showGestureHint();
+                localStorage.setItem('album_visited', 'true');
+            }
+        }
+
+        function playFlipSound() {
+            const sound = document.getElementById('pageFlipSound');
+            sound.currentTime = 0;
+            sound.volume = 0.3;
+            sound.play().catch(() => {
+                // 浏览器可能阻止自动播放
+            });
+        }
+
+        function updatePageNumber(page) {
+            document.getElementById('currentPage').textContent = page;
+        }
+
+        function showGestureHint() {
+            const hint = document.createElement('div');
+            hint.className = 'gesture-hint';
+            hint.innerHTML = '👆 点击或拖拽翻页<br/>← 向右翻 / 向左翻 →';
+            document.body.appendChild(hint);
+
+            setTimeout(() => {
+                hint.remove();
+            }, 4000);
+        }
+    </script>
+</body>
+</html>
